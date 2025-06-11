@@ -1,5 +1,6 @@
 package com.yogendra.finance_tracker.model;
 
+import com.fasterxml.jackson.annotation.JsonBackReference;
 import jakarta.persistence.*;
 import lombok.Data;
 import lombok.ToString;
@@ -20,5 +21,6 @@ public class Category {
     @JoinColumn(name = "user_id")
     @ToString.Exclude
     @EqualsAndHashCode.Exclude
+    @JsonBackReference
     private User user;
 }
