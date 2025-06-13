@@ -30,8 +30,9 @@ public class Transaction {
     @Column(nullable = false)
     private BigDecimal amount;
 
+    @Enumerated(EnumType.STRING)
     @Column(nullable = false)
-    private String type; // "INCOME" or "EXPENSE"
+    private TransactionType type;
 
     private String description;
 
