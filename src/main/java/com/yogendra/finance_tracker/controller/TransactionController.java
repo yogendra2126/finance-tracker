@@ -9,6 +9,14 @@ import com.yogendra.finance_tracker.model.User;
 import com.yogendra.finance_tracker.repository.UserRepository;
 import com.yogendra.finance_tracker.service.CategoryService;
 import com.yogendra.finance_tracker.service.TransactionService;
+import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.Parameter;
+import io.swagger.v3.oas.annotations.media.Content;
+import io.swagger.v3.oas.annotations.media.Schema;
+import io.swagger.v3.oas.annotations.responses.ApiResponse;
+import io.swagger.v3.oas.annotations.responses.ApiResponses;
+import io.swagger.v3.oas.annotations.tags.Tag;
+import jakarta.validation.Valid;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
@@ -21,6 +29,7 @@ import org.springframework.web.bind.annotation.*;
 import java.time.LocalDate;
 import java.util.Optional;
 
+@Tag(name = "Transactions", description = "Operations related to transactions")
 @RestController
 @RequestMapping("/api/transactions")
 public class TransactionController {
@@ -44,13 +53,21 @@ public class TransactionController {
         return user.getId();
     }
 
+    @Operation(
+            summary = "Get paginated transactions",
+            description = "Returns a paginated list of the authenticated user's transactions, optionally filtered by type, category, or date range."
+    )
+    @ApiResponses({
+            @ApiResponse(responseCode = "200", description = "Success"),
+            @ApiResponse(responseCode = "401", description = "Unauthorized", content = @Content)
+    })
     @GetMapping
     public ResponseEntity<Page<TransactionResponse>> getTransactions(
             Authentication authentication,
-            @RequestParam(required = false) TransactionType type,
-            @RequestParam(required = false) Long categoryId,
-            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate startDate,
-            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate endDate,
+            @Parameter(description = "Transaction type: INCOME or EXPENSE") @RequestParam(required = false) TransactionType type,
+            @Parameter(description = "Category ID") @RequestParam(required = false) Long categoryId,
+            @Parameter(description = "Start date (yyyy-MM-dd)") @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate startDate,
+            @Parameter(description = "End date (yyyy-MM-dd)") @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate endDate,
             Pageable pageable
     ) {
         Long userId = getUserId(authentication);
@@ -61,9 +78,19 @@ public class TransactionController {
         return ResponseEntity.ok(dtoPage);
     }
 
+    @Operation(
+            summary = "Create a new transaction",
+            description = "Creates a new transaction for the authenticated user."
+    )
+    @ApiResponses({
+            @ApiResponse(responseCode = "201", description = "Transaction created", content = @Content(schema = @Schema(implementation = TransactionResponse.class))),
+            @ApiResponse(responseCode = "400", description = "Validation error", content = @Content),
+            @ApiResponse(responseCode = "404", description = "Category not found", content = @Content),
+            @ApiResponse(responseCode = "401", description = "Unauthorized", content = @Content)
+    })
     @PostMapping
     public ResponseEntity<TransactionResponse> createTransaction(
-            @RequestBody TransactionRequest request,
+            @Valid @RequestBody TransactionRequest request,
             Authentication authentication) {
         Long userId = getUserId(authentication);
 
@@ -74,9 +101,9 @@ public class TransactionController {
         transaction.setDescription(request.getDescription());
         transaction.setDate(request.getDate());
 
-        // Fetch and set Category entity by ID (assume categoryService or repository is available)
-        Category category = categoryService.getCategoryById(request.getCategoryId())
-                .orElseThrow(() -> new IllegalArgumentException("Category not found"));
+        // Category ownership check
+        Category category = categoryService.getCategoryByIdAndUserId(request.getCategoryId(), userId)
+                .orElseThrow(() -> new IllegalArgumentException("Category not found or does not belong to user"));
         transaction.setCategory(category);
 
         // Create transaction with userId
@@ -88,10 +115,19 @@ public class TransactionController {
         return ResponseEntity.status(HttpStatus.CREATED).body(response);
     }
 
-    // GET /api/transactions/{id}
+    @Operation(
+            summary = "Get a transaction by ID",
+            description = "Returns a transaction by its ID if it belongs to the authenticated user."
+    )
+    @ApiResponses({
+            @ApiResponse(responseCode = "200", description = "Transaction found", content = @Content(schema = @Schema(implementation = TransactionResponse.class))),
+            @ApiResponse(responseCode = "404", description = "Transaction not found", content = @Content),
+            @ApiResponse(responseCode = "401", description = "Unauthorized", content = @Content)
+    })
     @GetMapping("/{id}")
     public ResponseEntity<TransactionResponse> getTransactionById(
-            @PathVariable Long id, Authentication authentication) {
+            @Parameter(description = "Transaction ID") @PathVariable Long id,
+            Authentication authentication) {
         Long userId = getUserId(authentication);
         Optional<Transaction> transaction = transactionService.getTransactionById(id, userId);
         return transaction
@@ -99,11 +135,20 @@ public class TransactionController {
                 .orElse(ResponseEntity.notFound().build());
     }
 
-    // PUT /api/transactions/{id}
+    @Operation(
+            summary = "Update a transaction",
+            description = "Updates an existing transaction for the authenticated user."
+    )
+    @ApiResponses({
+            @ApiResponse(responseCode = "200", description = "Transaction updated", content = @Content(schema = @Schema(implementation = TransactionResponse.class))),
+            @ApiResponse(responseCode = "400", description = "Validation error", content = @Content),
+            @ApiResponse(responseCode = "404", description = "Transaction or category not found", content = @Content),
+            @ApiResponse(responseCode = "401", description = "Unauthorized", content = @Content)
+    })
     @PutMapping("/{id}")
     public ResponseEntity<TransactionResponse> updateTransaction(
-            @PathVariable Long id,
-            @RequestBody TransactionRequest transactionRequest,
+            @Parameter(description = "Transaction ID") @PathVariable Long id,
+            @Valid @RequestBody TransactionRequest transactionRequest,
             Authentication authentication) {
         Long userId = getUserId(authentication);
 
@@ -113,22 +158,31 @@ public class TransactionController {
         updatedTransaction.setType(TransactionType.valueOf(transactionRequest.getType()));
         updatedTransaction.setDescription(transactionRequest.getDescription());
         updatedTransaction.setDate(transactionRequest.getDate());
-        // Fetch and set Category entity by ID (assume categoryService or repository is available)
-        Category category = categoryService.getCategoryById(transactionRequest.getCategoryId())
-                .orElseThrow(() -> new IllegalArgumentException("Category not found"));
+
+        // Category ownership check
+        Category category = categoryService.getCategoryByIdAndUserId(transactionRequest.getCategoryId(), userId)
+                .orElseThrow(() -> new IllegalArgumentException("Category not found or does not belong to user"));
         updatedTransaction.setCategory(category);
 
         Transaction updated = transactionService.updateTransaction(id, updatedTransaction, userId);
         return ResponseEntity.ok(TransactionResponse.fromEntity(updated));
     }
 
-    // DELETE /api/transactions/{id}
+    @Operation(
+            summary = "Delete a transaction",
+            description = "Deletes a transaction by its ID if it belongs to the authenticated user."
+    )
+    @ApiResponses({
+            @ApiResponse(responseCode = "204", description = "Transaction deleted"),
+            @ApiResponse(responseCode = "404", description = "Transaction not found", content = @Content),
+            @ApiResponse(responseCode = "401", description = "Unauthorized", content = @Content)
+    })
     @DeleteMapping("/{id}")
     public ResponseEntity<Void> deleteTransaction(
-            @PathVariable Long id, Authentication authentication) {
+            @Parameter(description = "Transaction ID") @PathVariable Long id,
+            Authentication authentication) {
         Long userId = getUserId(authentication);
         transactionService.deleteTransaction(id, userId);
         return ResponseEntity.noContent().build();
     }
-
 }
