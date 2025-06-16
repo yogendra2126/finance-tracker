@@ -4,6 +4,7 @@ import com.yogendra.finance_tracker.dto.AuthRequest;
 import com.yogendra.finance_tracker.dto.AuthResponse;
 import com.yogendra.finance_tracker.security.JwtTokenProvider;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.authentication.AuthenticationManager;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
@@ -15,11 +16,14 @@ import org.springframework.web.bind.annotation.*;
 @RequestMapping("/api/auth")
 public class AuthController {
 
-    @Autowired
-    private AuthenticationManager authenticationManager;
+    private final AuthenticationManager authenticationManager;
+    private final JwtTokenProvider jwtTokenProvider;
 
     @Autowired
-    private JwtTokenProvider jwtTokenProvider;
+    public AuthController(AuthenticationManager authenticationManager, JwtTokenProvider jwtTokenProvider) {
+        this.authenticationManager = authenticationManager;
+        this.jwtTokenProvider = jwtTokenProvider;
+    }
 
     @PostMapping("/login")
     public ResponseEntity<?> login(@RequestBody AuthRequest request) {
@@ -29,14 +33,14 @@ public class AuthController {
                     new UsernamePasswordAuthenticationToken(request.getEmail(), request.getPassword())
             );
 
-            // Generate JWT token
-            String token = jwtTokenProvider.generateToken(request.getEmail());
+            // Generate JWT token using authenticated principal's username
+            String token = jwtTokenProvider.generateToken(authentication.getName());
 
             // Return the token in the response
             return ResponseEntity.ok(new AuthResponse(token));
         } catch (AuthenticationException ex) {
             // Return 401 Unauthorized if authentication fails
-            return ResponseEntity.status(401).body("Invalid email or password");
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body("Invalid email or password");
         }
     }
 }
