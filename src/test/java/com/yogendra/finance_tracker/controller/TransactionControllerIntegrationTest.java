@@ -19,7 +19,7 @@ import org.springframework.test.web.servlet.MockMvc;
 import java.math.BigDecimal;
 import java.time.LocalDate;
 
-import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.*;
+import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.jwt;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.*;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
 
@@ -60,10 +60,10 @@ class TransactionControllerIntegrationTest {
 
         Category category = new Category();
         category.setName("Salary");
+        category.setUser(user);
         categoryRepository.save(category);
         categoryId = category.getId();
 
-        // Insert a transaction for GET/PUT/DELETE tests
         Transaction transaction = new Transaction();
         transaction.setAmount(BigDecimal.valueOf(1000));
         transaction.setType(TransactionType.INCOME);
@@ -85,7 +85,7 @@ class TransactionControllerIntegrationTest {
 
     @Test
     void createTransaction_shouldReturnCreated() throws Exception {
-        String txJson = """
+        String txJson = String.format("""
         {
             "amount": 500,
             "type": "INCOME",
@@ -93,7 +93,7 @@ class TransactionControllerIntegrationTest {
             "date": "2025-06-13",
             "categoryId": %d
         }
-        """.formatted(categoryId);
+        """, categoryId);
 
         mockMvc.perform(post("/api/transactions")
                         .with(jwt().jwt(jwt -> jwt.claim("sub", TEST_EMAIL)))
@@ -118,7 +118,7 @@ class TransactionControllerIntegrationTest {
 
     @Test
     void updateTransaction_shouldReturnOk() throws Exception {
-        String updateJson = """
+        String updateJson = String.format("""
         {
             "amount": 1200,
             "type": "INCOME",
@@ -126,7 +126,7 @@ class TransactionControllerIntegrationTest {
             "date": "2025-06-15",
             "categoryId": %d
         }
-        """.formatted(categoryId);
+        """, categoryId);
 
         mockMvc.perform(put("/api/transactions/{id}", transactionId)
                         .with(jwt().jwt(jwt -> jwt.claim("sub", TEST_EMAIL)))
